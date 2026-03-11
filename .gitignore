@@ -1,0 +1,21 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+ 
+# 虚拟环境
+venv/
+env/
+ 
+# PyInstaller 打包生成的文件
+build/
+dist/
+*.spec
+ 
+# 本地数据库和词库文件（保护隐私，防止冲突）
+data/
+*.db
+*.json
+*.imported
+*.7z
+*.zip

@@ -96,28 +96,38 @@ def load_col_widths():
         pass
  
 # ================= 3. 极速带筛选搜索 =================
+
 def search(*args):
     query = search_var.get().strip().lower()
     selected_lib = filter_var.get()
+
     for row in tree.get_children():
         tree.delete(row)
+
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     sql = 'SELECT id, abbr, full, desc, source_lib FROM terms WHERE 1=1'
     params = []
+
     if query:
-        search_pattern = f'%{query}%'
-        sql += ' AND (abbr LIKE ? OR full LIKE ?)'
-        params.extend([search_pattern, search_pattern])
+        # 严格的前缀匹配
+        search_pattern = f'{query}%'
+        # 只匹配缩略词 (abbr) 的开头，
+        sql += ' AND abbr LIKE ?'
+        params.append(search_pattern)
+
     if selected_lib and selected_lib != "全部模块":
         sql += ' AND source_lib = ?'
         params.append(selected_lib)
-    sql += ' LIMIT 1000'
+
+    # 按字母顺序排列显示
+    sql += ' ORDER BY abbr ASC LIMIT 1000' 
     c.execute(sql, tuple(params))
     rows = c.fetchall()
     conn.close()
     for r in rows:
         tree.insert('', 'end', values=r)
+ 
  
 # ================= 4. 增删改查逻辑 =================
 def manual_add():

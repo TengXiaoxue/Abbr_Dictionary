@@ -95,39 +95,37 @@ def load_col_widths():
     except Exception:
         pass
  
-# ================= 3. 极速带筛选搜索 =================
-
+# ================= 3. 极速带筛选搜索 (新增模糊匹配逻辑) =================
 def search(*args):
     query = search_var.get().strip().lower()
     selected_lib = filter_var.get()
-
+    is_fuzzy = fuzzy_var.get()  # 获取当前是否勾选了“模糊匹配”
     for row in tree.get_children():
         tree.delete(row)
-
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     sql = 'SELECT id, abbr, full, desc, source_lib FROM terms WHERE 1=1'
     params = []
-
     if query:
-        # 严格的前缀匹配
-        search_pattern = f'{query}%'
-        # 只匹配缩略词 (abbr) 的开头，
-        sql += ' AND abbr LIKE ?'
-        params.append(search_pattern)
-
+        if is_fuzzy:
+            # 开启模糊匹配：前后带 %，且同时在缩略词、全称、中文解释三个字段里寻找
+            search_pattern = f'%{query}%'
+            sql += ' AND (abbr LIKE ? OR full LIKE ? OR desc LIKE ?)'
+            params.extend([search_pattern, search_pattern, search_pattern])
+        else:
+            # 默认严格模式：只匹配缩略词，且必须以输入的字母开头
+            search_pattern = f'{query}%'
+            sql += ' AND abbr LIKE ?'
+            params.append(search_pattern)
     if selected_lib and selected_lib != "全部模块":
         sql += ' AND source_lib = ?'
         params.append(selected_lib)
-
-    # 按字母顺序排列显示
-    sql += ' ORDER BY abbr ASC LIMIT 1000' 
+    sql += ' ORDER BY abbr ASC LIMIT 1000'
     c.execute(sql, tuple(params))
     rows = c.fetchall()
     conn.close()
     for r in rows:
         tree.insert('', 'end', values=r)
- 
  
 # ================= 4. 增删改查逻辑 =================
 def manual_add():
@@ -278,17 +276,15 @@ mouse_y = 0
 def on_tree_motion(event):
     global tooltip_id, last_hovered_item, mouse_x, mouse_y
     mouse_x, mouse_y = event.x_root, event.y_root
-    # 只要鼠标在某一行上，无论在哪一列都触发
     item = tree.identify_row(event.y)
     if not item:
         hide_tooltip()
         last_hovered_item = None
         return
     if item == last_hovered_item:
-        return # 还在同一行，不重复触发
+        return 
     last_hovered_item = item
-    hide_tooltip() # 换行了，先隐藏之前的提示框
-    # 延迟 0.5 秒弹出
+    hide_tooltip() 
     tooltip_id = tree.after(500, lambda: show_tooltip(item))
  
 def show_tooltip(item):
@@ -305,7 +301,6 @@ def show_tooltip(item):
     if not display_text: return
     tooltip_win = tk.Toplevel(root)
     tooltip_win.wm_overrideredirect(True) 
-    # 【修复核心点】必须加上这行代码，让悬浮框突破主窗口的置顶限制！
     tooltip_win.attributes('-topmost', True) 
     tooltip_win.wm_geometry(f"+{mouse_x + 15}+{mouse_y + 15}")
     label = tk.Label(tooltip_win, text=display_text, justify=tk.LEFT,
@@ -353,7 +348,7 @@ init_db()
  
 root = tk.Tk()
 root.title("📚 极速数据库词典 (Alt+Q 唤醒)")
-root.geometry("950x550")
+root.geometry("1000x550")
 root.protocol("WM_DELETE_WINDOW", on_closing)
  
 lib_label_var = tk.StringVar()
@@ -375,6 +370,11 @@ search_var = tk.StringVar()
 search_var.trace_add('write', search) 
 search_entry = tk.Entry(search_inner_frame, textvariable=search_var, font=('微软雅黑', 14))
 search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+ 
+# ===== 新增：模糊匹配开关 =====
+fuzzy_var = tk.BooleanVar(value=False) # 默认不勾选，保持严格首字母匹配
+fuzzy_check = tk.Checkbutton(search_inner_frame, text="模糊匹配全文", variable=fuzzy_var, command=search, font=('微软雅黑', 10))
+fuzzy_check.pack(side=tk.LEFT, padx=(5, 0))
  
 btn_frame = tk.Frame(top_frame)
 btn_frame.pack(side=tk.RIGHT)
@@ -416,8 +416,6 @@ tree.column('desc', width=450, minwidth=200, anchor=tk.W, stretch=True)
  
 load_col_widths()
 tree.bind('<Double-1>', edit_selected)
- 
-# 绑定鼠标移动事件以触发提示框，离开表格或点击时销毁
 tree.bind('<Motion>', on_tree_motion)
 tree.bind('<Leave>', hide_tooltip)
 tree.bind('<Button-1>', hide_tooltip)
